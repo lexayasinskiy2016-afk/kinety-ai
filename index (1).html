@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Нейронка</title>
+<meta name="description" content="Нейронка: умный чат, который разговаривает голосом, рисует картинки и делает игры.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Unbounded:wght@600&display=swap">
+<style>
+/* Макет: шапка с профилем и голосом, лента чата, поле ввода; поверх — окно профилей и экран разговора */
+:root {
+  --bg: #eef1f7; --surface: #ffffff; --ink: #141a2b; --muted: #596379; --line: #d6dce9;
+  --accent: #1f4fe0; --accent-ink: #ffffff; --bot: #ffffff; --user: #1f4fe0; --user-ink: #ffffff;
+  --danger: #b3261e; --scrim: rgba(10, 14, 28, .5);
+  --font-display: 'Unbounded', system-ui, sans-serif;
+  --font-body: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1220; --surface: #161d33; --ink: #e8ecf7; --muted: #95a0bb; --line: #28314f;
+    --accent: #7b9bff; --accent-ink: #0d1220; --bot: #161d33; --user: #2c4bc4; --user-ink: #ffffff;
+    --danger: #ff8a80; --scrim: rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1220; --surface: #161d33; --ink: #e8ecf7; --muted: #95a0bb; --line: #28314f;
+  --accent: #7b9bff; --accent-ink: #0d1220; --bot: #161d33; --user: #2c4bc4; --user-ink: #ffffff;
+  --danger: #ff8a80; --scrim: rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#app { height: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; }
+header { padding: 12px 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+h1 { font-family: var(--font-display); font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+.sub { display: block; color: var(--muted); font-size: 13px; }
+.tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.tbtn { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; min-width: 0; }
+.tbtn:hover { border-color: var(--accent); }
+.tbtn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.tbtn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.av { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff; background: var(--accent); flex: none; }
+#profName { max-width: 11ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 0 14px; }
+.msg { max-width: 88%; padding: 10px 14px; border-radius: 14px; overflow-wrap: anywhere; min-width: 0; }
+.msg.user { align-self: flex-end; background: var(--user); color: var(--user-ink); white-space: pre-wrap; border-bottom-right-radius: 4px; }
+.msg.bot { align-self: flex-start; background: var(--bot); border: 1px solid var(--line); border-bottom-left-radius: 4px; white-space: pre-wrap; }
+.msg img { display: block; width: 100%; max-width: 420px; margin-top: 10px; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
+.msg pre { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 14px; overflow-x: auto; }
+.msg code { font-size: 14px; background: var(--bg); padding: 1px 5px; border-radius: 5px; }
+.msg.wide { width: 100%; max-width: 100%; }
+.game { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+.gbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; font-size: 13px; color: var(--muted); }
+.gbar span { flex: 1 1 200px; min-width: 0; }
+.gbtn { font-size: 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.gbtn:hover { border-color: var(--accent); }
+.game iframe { display: block; width: 100%; height: min(70vh, 520px); border: 0; background: #fff; }
+.drawing { margin-top: 8px; color: var(--muted); font-size: 14px; }
+.start { margin: auto 0; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.start p { margin: 0; font-size: 18px; max-width: 30ch; text-wrap: balance; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.notice { color: var(--muted); font-size: 13px; padding-bottom: 6px; min-height: 1.5em; }
+
+form.compose { display: flex; gap: 8px; padding: 10px 0 max(14px, env(safe-area-inset-bottom, 0px)); align-items: stretch; }
+textarea, .vtext input, .pin { flex: 1; min-width: 0; resize: none; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+textarea { max-height: 140px; }
+.send { font-weight: 600; border: 0; border-radius: 12px; padding: 0 18px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+.send:disabled { opacity: .5; cursor: default; }
+.mic { width: 46px; flex: none; display: grid; place-items: center; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+.mic:hover { border-color: var(--accent); }
+.mic.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+.modal.top { z-index: 50; }
+.modal { position: fixed; inset: 0; z-index: 30; background: var(--scrim); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.card { width: 100%; max-width: 460px; max-height: 100%; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.card h2 { font-family: var(--font-display); font-size: 17px; margin: 0; }
+.card p { margin: 0; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.prow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.prow.on { border-color: var(--accent); }
+.pname { flex: 1 1 8ch; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.pin { flex: 1 1 10ch; padding: 6px 10px; }
+.sbtn { font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.sbtn:hover:not(:disabled) { border-color: var(--accent); }
+.sbtn:disabled { opacity: .5; cursor: default; }
+.sbtn.danger { color: var(--danger); }
+.badge { font-size: 12px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.voice { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: flex; flex-direction: column; gap: 12px;
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(14px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.vtop { display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: 760px; width: 100%; margin: 0 auto; }
+.vtitle { font-family: var(--font-display); font-size: 17px; }
+.vmid { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; max-width: 560px; width: 100%; margin: 0 auto; }
+.orb { width: 150px; height: 150px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; cursor: pointer; flex: none; }
+.orb svg { width: 52px; height: 52px; }
+.vstate { margin: 0; color: var(--muted); font-size: 15px; min-height: 1.5em; text-wrap: balance; }
+.vyou { margin: 0; font-size: 16px; color: var(--muted); min-height: 1.5em; overflow-wrap: anywhere; }
+.vbot { margin: 0; font-size: 19px; overflow-wrap: anywhere; text-wrap: pretty; }
+.vtext { display: flex; gap: 8px; max-width: 560px; width: 100%; margin: 0 auto; }
+.vtext .send { padding: 10px 16px; }
+.vnote { margin: 0 auto; color: var(--muted); font-size: 12.5px; text-align: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .msg { animation: in .18s ease-out; }
+  @keyframes in { from { opacity: 0; transform: translateY(4px); } }
+  .voice[data-state="listening"] .orb { animation: ring 1.4s ease-out infinite; }
+  .voice[data-state="speaking"] .orb { animation: beat .9s ease-in-out infinite; }
+  .voice[data-state="thinking"] .orb { animation: fade 1s ease-in-out infinite; }
+  @keyframes ring { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } to { box-shadow: 0 0 0 36px transparent; } }
+  @keyframes beat { 50% { transform: scale(1.07); } }
+  @keyframes fade { 50% { opacity: .55; } }
+}
+</style>
+</head><body>
+<div id="app">
+  <header>
+    <div>
+      <h1>Нейронка</h1>
+      <span class="sub">разговаривает, рисует, делает игры и говорит</span>
+    </div>
+    <div class="tools">
+      <button class="tbtn" id="prof" type="button" aria-label="Профили"><span class="av" id="av">?</span><span id="profName">Профиль</span></button>
+      <button class="tbtn" id="spk" type="button" aria-pressed="false">Озвучка</button>
+      <button class="tbtn primary" id="vm" type="button">Разговор</button>
+    </div>
+  </header>
+  <div id="log"></div>
+  <div class="notice" id="notice"></div>
+  <form class="compose" id="f">
+    <button class="mic" id="mic" type="button" aria-label="Надиктовать сообщение голосом">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <textarea id="q" rows="1" placeholder="Напиши или нажми на микрофон…" aria-label="Сообщение"></textarea>
+    <button class="send" id="go" type="submit" disabled>Отправить</button>
+  </form>
+</div>
+
+<div class="modal top" id="keybox" hidden>
+  <form class="card" id="kf">
+    <h2>Подключи бесплатный мозг</h2>
+    <p>Нейронке нужен бесплатный ключ от сервиса Groq. Это пара минут, платить и вводить карту не нужно.</p>
+    <ol style="margin:0;padding-left:20px;color:var(--muted);font-size:14px;display:flex;flex-direction:column;gap:4px">
+      <li>Открой console.groq.com/keys и войди через Google.</li>
+      <li>Нажми «Create API Key», назови как угодно и скопируй ключ (он начинается с gsk_).</li>
+      <li>Вставь его сюда и нажми «Сохранить».</li>
+    </ol>
+    <input id="kin" class="pin" style="flex:none" type="password" placeholder="gsk_..." autocomplete="off" aria-label="Ключ Groq">
+    <p id="kerr" style="color:var(--danger)"></p>
+    <div class="row"><button class="send" style="padding:10px 18px" type="submit">Сохранить</button><button class="sbtn" id="kclose" type="button">Позже</button></div>
+    <p>Ключ хранится только в этом браузере и отправляется только в Groq.</p>
+  </form>
+</div>
+
+<div class="modal" id="login" hidden>
+  <form class="card" id="lf">
+    <h2>Вход в Нейронку</h2>
+    <p>Напиши свою электронную почту, и ты внутри. Код не нужен.</p>
+    <input id="lemail" class="pin" style="flex:none" type="email" autocomplete="email" placeholder="имя@gmail.com" aria-label="Электронная почта">
+    <p id="lerr" style="color:var(--danger)"></p>
+    <button class="send" style="padding:10px 18px" type="submit">Войти</button>
+    <p>Почта не проверяется. Она нужна только для того, чтобы у тебя были свои профили и чаты в этом браузере. На одну почту можно создать до 3 профилей.</p>
+  </form>
+</div>
+
+<div class="modal" id="panel" hidden>
+  <div class="card" role="dialog" aria-label="Профили">
+    <h2>Профили</h2>
+    <p id="who"></p>
+    <div id="plist" style="display:flex;flex-direction:column;gap:8px"></div>
+    <p id="pnote" hidden>Выйди из режима инкогнито и разреши сайту хранить данные, тогда профили и чаты будут сохраняться.</p>
+    <p id="pmax" hidden>На одном аккаунте можно создать до 3 профилей.</p>
+    <div class="row">
+      <button class="sbtn" id="padd" type="button">Добавить профиль</button>
+      <button class="sbtn" id="pclear" type="button">Очистить чат</button>
+      <button class="sbtn" id="pkey" type="button">Ключ ответов</button>
+      <button class="sbtn" id="logout" type="button">Выйти</button>
+      <button class="sbtn" id="pclose" type="button">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<div class="voice" id="vo" data-state="idle" hidden role="dialog" aria-label="Режим разговора">
+  <div class="vtop"><span class="vtitle">Разговор</span><button class="tbtn" id="vend" type="button">Завершить</button></div>
+  <div class="vmid">
+    <button class="orb" id="orb" type="button" aria-label="Микрофон">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <p class="vstate" id="vstate" aria-live="polite"></p>
+    <p class="vyou" id="vyou"></p>
+    <p class="vbot" id="vbot"></p>
+  </div>
+  <form class="vtext" id="vf">
+    <input id="vin" type="text" placeholder="Можно ответить текстом" autocomplete="off" aria-label="Ответить текстом">
+    <button class="send" type="submit">Сказать</button>
+  </form>
+  <p class="vnote">В этом режиме Нейронка только разговаривает, без игр и картинок.</p>
+</div>
+
+<script>
+const API_URL = 'https://api.groq.com/openai/v1/chat/completions'; // бесплатный тариф Groq, нужен личный ключ
+const API_MODEL = 'llama-3.3-70b-versatile';
+async function sampleShim(input, opts) {
+  const key = store.get('nn_key');
+  if (!key) { const e = new Error('нет ключа'); e.code = 'nokey'; throw e; }
+  const r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify({ model: API_MODEL, messages: input, max_tokens: 6000 }), signal: opts && opts.signal });
+  if (r.status === 401 || r.status === 403) { const e = new Error('ключ не подошёл'); e.code = 'badkey'; throw e; }
+  if (!r.ok) { const e = new Error('сервис ответил ошибкой ' + r.status); e.code = r.status === 429 ? 'rate_limited' : 'http'; throw e; }
+  const j = await r.json();
+  const text = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+  if (!text) throw new Error('пустой ответ');
+  return { text };
+}
+const downloadShim = { async save({ filename, data }) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'text/html' }));
+  a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000); return { status: 'saved' };
+} };
+const localDb = { doc(path) { const k = 'nn:' + path; return {
+  async get() { let d; try { d = JSON.parse(localStorage.getItem(k)); } catch (e) { d = null; } return { exists: !!d, data: () => d || undefined }; },
+  async set(v) { localStorage.setItem(k, JSON.stringify(v)); },
+  async delete() { localStorage.removeItem(k); } }; } };
+const INSTR = "Ты — умный, дружелюбный ассистент по имени Нейронка. Всегда отвечай на языке пользователя, по умолчанию по-русски. " +
+  "Рассуждай внимательно и отвечай точно; если не уверена — так и скажи. Доступа к интернету у тебя нет. " +
+  "Если пользователь просит нарисовать, сгенерировать или показать картинку, ответь одной короткой фразой и добавь один полный SVG-рисунок " +
+  "(<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"> ... </svg>) без скриптов и внешних ссылок: яркий, аккуратный, с фоном, " +
+  "из простых форм, градиентов и деталей. SVG пиши сразу в тексте, не в блоке кода. " +
+  "Если пользователь просит создать игру, приложение, сайт, калькулятор, страницу или любой интерактивный инструмент, напиши ОДИН полный " +
+  "самодостаточный HTML-документ (<!doctype html> ... </html>) с CSS и JavaScript внутри и помести его целиком между тегами <game> и </game>, " +
+  "без блока кода. Никаких внешних библиотек, шрифтов, картинок и ссылок: всё внутри файла, графика через canvas или CSS. " +
+  "Игра должна управляться и с клавиатуры, и касаниями на телефоне, хорошо выглядеть, показывать счёт и иметь кнопку «Заново». " +
+  "Перед тегом напиши одну короткую фразу, после тега коротко объясни управление. Если просят изменить игру, выдай новую полную версию в <game>.";
+const VOICE_INSTR = "Ты — умная, дружелюбная Нейронка, и сейчас идёт живой голосовой разговор. Отвечай по-русски, если человек не говорит на другом языке. " +
+  "Говори естественно и коротко: от одного до четырёх предложений, без списков, заголовков, смайликов и разметки, потому что ответ будет произнесён вслух. " +
+  "Не пиши код, не рисуй картинки и не создавай игры или приложения. Если об этом просят, вежливо скажи, что в режиме разговора это недоступно " +
+  "и это можно сделать в обычном чате. Доступа к интернету у тебя нет.";
+const MIC_BLOCKED = "Микрофон на этой странице недоступен. Нажми на значок микрофона на клавиатуре телефона, чтобы надиктовать текст.";
+const DEFAULT_NOTE = "Без выхода в интернет: отвечает по своим знаниям. Картинки рисует векторной графикой.";
+
+const $ = id => document.getElementById(id);
+const log = $('log'), q = $('q'), go = $('go'), notice = $('notice');
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+let sample = null, downloads = null, db = null, me = null, uid = null, canSave = false;
+let profiles = [], active = null, chatMsgs = [], busy = false, ctrl = null;
+let speakOn = store.get('nn_speak') === '1';
+
+/* ---------- заметка под лентой ---------- */
+let noteTimer = null;
+function note(text) {
+  notice.textContent = text;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => { notice.textContent = DEFAULT_NOTE; }, 9000);
+}
+
+/* ---------- озвучка ---------- */
+let speakTok = 0, cancelPrev = null;
+function stopSpeaking() { speakTok++; try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} if (cancelPrev) cancelPrev(); }
+function pickVoice() {
+  try {
+    const vs = window.speechSynthesis.getVoices();
+    return vs.find(v => v.lang.toLowerCase().startsWith('ru')) || null;
+  } catch (e) { return null; }
+}
+function speakAsync(text) {
+  return new Promise(resolve => {
+    const synth = window.speechSynthesis;
+    if (!synth || !text) { resolve(false); return; }
+    if (cancelPrev) cancelPrev();
+    const tok = ++speakTok;
+    synth.cancel();
+    const parts = (text.match(/[^.!?…\n]+[.!?…]*/g) || [text]).map(s => s.trim()).filter(Boolean);
+    const chunks = [];
+    for (const p of parts) {
+      if (chunks.length && chunks[chunks.length - 1].length + p.length < 160) chunks[chunks.length - 1] += ' ' + p; else chunks.push(p);
+    }
+    let i = 0, started = false, done = false, wd = null;
+    const finish = ok => { if (done) return; done = true; clearTimeout(wd); if (cancelPrev === cancel) cancelPrev = null; resolve(ok); };
+    const cancel = () => finish(false);
+    cancelPrev = cancel;
+    wd = setTimeout(() => { if (!started) { try { synth.cancel(); } catch (e) {} finish(false); } }, 4000);
+    const next = () => {
+      if (tok !== speakTok) { finish(false); return; }
+      if (i >= chunks.length) { finish(true); return; }
+      const u = new SpeechSynthesisUtterance(chunks[i++]);
+      u.lang = 'ru-RU';
+      const v = pickVoice(); if (v) u.voice = v;
+      u.onstart = () => { started = true; };
+      u.onend = next;
+      u.onerror = () => finish(started);
+      try { synth.speak(u); } catch (e) { finish(false); }
+    };
+    next();
+  });
+}
+function cleanForSpeech(t) {
+  return t.replace(/<game>[\s\S]*?(<\/game>|$)/gi, ' ').replace(/<svg[\s\S]*?(<\/svg>|$)/gi, ' ')
+    .replace(/```[\s\S]*?```/g, ' ').replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/* ---------- распознавание речи ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function listen(onInterim, onRec) {
+  return new Promise((resolve, reject) => {
+    if (!SR) { reject({ code: 'unsupported' }); return; }
+    const r = new SR();
+    r.lang = 'ru-RU'; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+    let finalText = '', err = null, heard = false, wd = null;
+    r.onaudiostart = () => { heard = true; clearTimeout(wd); };
+    r.onresult = e => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += t; else interim += t;
+      }
+      if (onInterim) onInterim((finalText + ' ' + interim).trim());
+    };
+    r.onerror = e => { if (e.error !== 'no-speech' && e.error !== 'aborted') err = e.error; };
+    r.onend = () => { clearTimeout(wd); if (err) reject({ code: err }); else resolve(finalText.trim()); };
+    wd = setTimeout(() => { if (!heard) { err = 'not-allowed'; try { r.abort(); } catch (e) {} } }, 20000);
+    try { r.start(); if (onRec) onRec(r); } catch (e) { clearTimeout(wd); reject({ code: 'start_failed' }); }
+  });
+}
+
+/* ---------- сообщения ---------- */
+function fmt(t) {
+  return esc(t).replace(/```[a-z]*\n?([\s\S]*?)```/g, '<pre>$1</pre>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/`([^`\n]+)`/g, '<code>$1</code>');
+}
+function gameBox(code) {
+  const box = el('div', 'game');
+  const bar = el('div', 'gbar');
+  bar.appendChild(el('span', '', 'Нажми на игру, чтобы управлять с клавиатуры'));
+  const mk = (label, fn) => { const b = el('button', 'gbtn', label); b.type = 'button'; b.addEventListener('click', () => fn(b)); bar.appendChild(b); };
+  mk('Скачать .html', async b => {
+    if (!downloads) { b.textContent = 'Скачивание недоступно'; return; }
+    try { await downloads.save({ filename: 'igra.html', data: code }); b.textContent = 'Сохранено'; }
+    catch (e) { b.textContent = e && e.code === 'declined' ? 'Отменено' : 'Не удалось'; }
+  });
+  mk('Копировать код', async b => {
+    try { await navigator.clipboard.writeText(code); b.textContent = 'Скопировано'; } catch (e) { b.textContent = 'Не удалось'; }
+  });
+  const fr = document.createElement('iframe');
+  fr.setAttribute('sandbox', 'allow-scripts allow-pointer-lock');
+  fr.title = 'Созданная игра'; fr.srcdoc = code;
+  box.appendChild(bar); box.appendChild(fr);
+  return box;
+}
+function paint(node, text, final, lazy) {
+  let body = text, svg = null, partial = false, game = null, building = false;
+  const g = text.match(/<game>([\s\S]*?)<\/game>/i);
+  if (g) { game = g[1].replace(/^\s*```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim(); body = text.replace(g[0], ''); }
+  else { const i = text.search(/<game>/i); if (i >= 0) { body = text.slice(0, i); building = true; } }
+  const m = body.match(/<svg[\s\S]*?<\/svg>/i);
+  if (m) { svg = m[0]; body = body.replace(m[0], ''); }
+  else { const i = body.search(/<svg/i); if (i >= 0) { body = body.slice(0, i); partial = true; } }
+  body = body.replace(/```(?:svg|xml|html)?\s*```/g, '').replace(/```(?:svg|xml|html)?\s*$/, '').trim();
+  let html = fmt(body);
+  if (svg) {
+    if (!/xmlns=/.test(svg)) svg = svg.replace(/<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+    html += '<img alt="Нарисованная картинка" src="data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '">';
+  } else if (partial) html += '<div class="drawing">Рисую…</div>';
+  if (building || (game && !final)) html += '<div class="drawing">Пишу игру…</div>';
+  node.innerHTML = html;
+  node.classList.toggle('wide', !!game);
+  if (game && final) {
+    if (lazy) {
+      const b = el('button', 'gbtn', 'Открыть игру'); b.type = 'button'; b.style.marginTop = '8px';
+      b.addEventListener('click', () => { b.replaceWith(gameBox(game)); });
+      node.appendChild(b);
+    } else node.appendChild(gameBox(game));
+  }
+  log.scrollTop = log.scrollHeight;
+}
+function makeStart() {
+  const s = el('div', 'start');
+  s.appendChild(el('p', '', 'Привет! Спроси что угодно, попроси нарисовать или сделать игру. Можно говорить голосом.'));
+  const chips = el('div', 'chips');
+  ['Нарисуй кота-космонавта', 'Объясни, как работает нейросеть', 'Сделай игру «Змейка»', 'Сделай калькулятор с тёмной темой'].forEach(t => {
+    const c = el('button', 'chip', t); c.type = 'button'; c.addEventListener('click', () => send(t)); chips.appendChild(c);
+  });
+  s.appendChild(chips);
+  return s;
+}
+function add(cls, text) {
+  const s = log.querySelector('.start'); if (s) s.remove();
+  const d = el('div', 'msg ' + cls, text);
+  log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
+}
+function renderChat() {
+  log.textContent = '';
+  if (!chatMsgs.length) { log.appendChild(makeStart()); return; }
+  chatMsgs.forEach(m => {
+    if (m.role === 'user') add('user', m.content);
+    else { const d = add('bot', ''); paint(d, m.content, true, true); }
+  });
+  log.scrollTop = log.scrollHeight;
+}
+function errorText(e) {
+  if (e && (e.code === 'nokey' || e.code === 'badkey')) { openKey(); return e.code === 'nokey' ? 'Нужен бесплатный ключ, чтобы Нейронка отвечала.' : 'Ключ не подошёл. Проверь его и введи снова.'; }
+  if (e && e.name === 'TypeError') return 'Нет связи с сервисом ответов. Проверь интернет и попробуй снова.';
+  return e && e.code === 'not_granted' ? 'Нет доступа к сервису ответов.'
+    : e && e.code === 'rate_limited' ? 'Слишком много запросов. Подожди минуту и попробуй снова.'
+    : 'Не получилось ответить: ' + ((e && e.message) || 'неизвестная ошибка');
+}
+function buildInput(msgs, instr) {
+  const m = msgs.slice();
+  while (m.length && m[0].role !== 'user') m.shift();
+  return m.map((x, i) => i === 0 ? { role: 'user', content: instr + '\n\n' + x.content } : x);
+}
+
+/* ---------- сохранение ---------- */
+const acctPath = () => 'data/users/' + uid + '/accounts';
+const chatPath = pid => 'data/users/' + uid + '/chat_' + pid;
+let saveChain = Promise.resolve();
+function trimmed(msgs) {
+  const enc = new TextEncoder();
+  let m = msgs.slice();
+  while (m.length > 1 && enc.encode(JSON.stringify(m)).length > 230000) m.shift();
+  while (m.length && m[0].role !== 'user') m.shift();
+  return m;
+}
+function saveChat() {
+  if (!canSave || !active) return;
+  const pid = active, msgs = trimmed(chatMsgs);
+  saveChain = saveChain.then(() => db.doc(chatPath(pid)).set({ messages: msgs, updated: Date.now() }))
+    .catch(() => { canSave = false; note('Сохранить чат не удалось. Переписка останется только на этой странице.'); });
+}
+async function saveProfiles() {
+  if (!canSave) return false;
+  try { await db.doc(acctPath()).set({ list: profiles }); return true; }
+  catch (e) { note('Не удалось сохранить профили.'); return false; }
+}
+async function loadChat() {
+  chatMsgs = [];
+  if (canSave) {
+    try {
+      const s = await db.doc(chatPath(active)).get();
+      const d = s.exists && s.data();
+      if (d && Array.isArray(d.messages)) chatMsgs = d.messages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+    } catch (e) {}
+  }
+  renderChat();
+}
+
+/* ---------- отправка ---------- */
+async function send(text) {
+  text = (text || '').trim();
+  if (busy || !text || !sample) return;
+  busy = true; go.disabled = true; stopSpeaking();
+  add('user', text); chatMsgs.push({ role: 'user', content: text });
+  const node = add('bot', 'Думаю…');
+  ctrl = new AbortController();
+  try {
+    const r = await sample(buildInput(chatMsgs.slice(-20), INSTR), { modelTier: 'complex', cache: false, signal: ctrl.signal, onText: ({ text }) => paint(node, text, false) });
+    paint(node, r.text, true); chatMsgs.push({ role: 'assistant', content: r.text });
+    saveChat();
+    if (speakOn) speakAsync(cleanForSpeech(r.text));
+  } catch (e) {
+    node.textContent = errorText(e); chatMsgs.pop();
+  }
+  busy = false; go.disabled = false; q.focus();
+}
+$('f').addEventListener('submit', e => { e.preventDefault(); const t = q.value; q.value = ''; q.style.height = ''; send(t); });
+q.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
+q.addEventListener('input', () => { q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 140) + 'px'; });
+
+/* ---------- голосовое сообщение в чате ---------- */
+let dictating = false, dictRec = null;
+$('mic').addEventListener('click', async () => {
+  if (dictating) { if (dictRec) try { dictRec.stop(); } catch (e) {} return; }
+  if (busy || !sample) return;
+  stopSpeaking();
+  dictating = true; $('mic').classList.add('on'); note('Слушаю, говори…');
+  try {
+    const t = await listen(txt => { q.value = txt; }, r => { dictRec = r; });
+    if (t) { q.value = ''; send(t); } else { q.value = ''; note('Ничего не услышала. Попробуй ещё раз.'); }
+  } catch (e) { q.value = ''; note(MIC_BLOCKED); }
+  dictating = false; $('mic').classList.remove('on');
+});
+$('spk').addEventListener('click', () => {
+  speakOn = !speakOn; store.set('nn_speak', speakOn ? '1' : '0');
+  $('spk').setAttribute('aria-pressed', String(speakOn));
+  if (!speakOn) stopSpeaking(); else note('Ответы будут озвучиваться.');
+});
+
+/* ---------- профили ---------- */
+let editing = null, confirming = null;
+const hue = i => 'hsl(' + ((i * 110 + 220) % 360) + ' 55% 42%)';
+function updateHeader() {
+  const i = Math.max(0, profiles.findIndex(p => p.id === active));
+  const p = profiles[i] || { name: 'Гость' };
+  $('profName').textContent = p.name;
+  $('av').textContent = (p.name || '?').trim().charAt(0).toUpperCase() || '?';
+  $('av').style.background = hue(i);
+}
+function renderPanel() {
+  const list = $('plist'); list.textContent = '';
+  $('who').textContent = me && me.email ? 'Вход: ' + me.email : (canSave ? 'Профили и чаты хранятся в этом браузере.' : 'Браузер не даёт сохранять данные. Чаты не сохраняются.');
+  $('pnote').hidden = canSave;
+  $('padd').hidden = !canSave; $('padd').disabled = profiles.length >= 3;
+  $('pmax').hidden = !(canSave && profiles.length >= 3);
+  if (!canSave) return;
+  profiles.forEach((p, i) => {
+    const row = el('div', 'prow' + (p.id === active ? ' on' : ''));
+    const av = el('span', 'av', (p.name || '?').trim().charAt(0).toUpperCase()); av.style.background = hue(i); row.appendChild(av);
+    const btn = (label, fn, cls) => { const b = el('button', 'sbtn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.addEventListener('click', fn); row.appendChild(b); return b; };
+    if (editing === p.id) {
+      const inp = el('input', 'pin'); inp.id = 'pin-' + p.id; inp.value = p.name; inp.maxLength = 24; inp.setAttribute('aria-label', 'Имя профиля');
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') renameProfile(p.id, inp.value); });
+      row.appendChild(inp);
+      btn('Сохранить', () => renameProfile(p.id, inp.value));
+      btn('Отмена', () => { editing = null; renderPanel(); });
+      setTimeout(() => inp.focus(), 0);
+    } else if (confirming === p.id) {
+      row.appendChild(el('span', 'pname', 'Удалить профиль и его чат?'));
+      btn('Да, удалить', () => removeProfile(p.id), 'danger');
+      btn('Нет', () => { confirming = null; renderPanel(); });
+    } else {
+      row.appendChild(el('span', 'pname', p.name));
+      if (p.id === active) row.appendChild(el('span', 'badge', 'Текущий'));
+      else btn('Выбрать', () => chooseProfile(p.id)).disabled = busy;
+      btn('Переименовать', () => { editing = p.id; renderPanel(); });
+      if (profiles.length > 1) btn('Удалить', () => { confirming = p.id; renderPanel(); }, 'danger');
+    }
+    list.appendChild(row);
+  });
+}
+function openPanel() { editing = null; confirming = null; renderPanel(); $('panel').hidden = false; }
+function closePanel() { $('panel').hidden = true; }
+async function chooseProfile(id) {
+  if (busy) return;
+  stopSpeaking(); active = id; store.set('nn_active_' + uid, id);
+  updateHeader(); await loadChat(); renderPanel();
+}
+async function renameProfile(id, value) {
+  const v = value.trim().slice(0, 24); if (!v) return;
+  const p = profiles.find(x => x.id === id); if (!p) return;
+  p.name = v; editing = null;
+  await saveProfiles(); updateHeader(); renderPanel();
+}
+async function addProfile() {
+  if (!canSave || profiles.length >= 3) return;
+  const p = { id: 'p' + Date.now().toString(36), name: 'Профиль ' + (profiles.length + 1) };
+  profiles.push(p);
+  if (!(await saveProfiles())) { profiles.pop(); return; }
+  editing = p.id; renderPanel();
+}
+async function removeProfile(id) {
+  if (profiles.length < 2) return;
+  const wasActive = id === active;
+  profiles = profiles.filter(p => p.id !== id); confirming = null;
+  await saveProfiles();
+  try { await db.doc(chatPath(id)).delete(); } catch (e) {}
+  if (wasActive) await chooseProfile(profiles[0].id); else { updateHeader(); renderPanel(); }
+}
+$('prof').addEventListener('click', openPanel);
+$('pclose').addEventListener('click', closePanel);
+$('padd').addEventListener('click', addProfile);
+$('pclear').addEventListener('click', () => {
+  if (busy) return;
+  stopSpeaking(); chatMsgs = []; renderChat(); saveChat(); closePanel();
+});
+$('panel').addEventListener('click', e => { if (e.target === $('panel')) closePanel(); });
+
+/* ---------- режим разговора ---------- */
+const vm = { on: false, state: 'idle', rec: null, ctrl: null, hist: [], silent: 0, loop: 0 };
+const VSTATE = {
+  idle: 'Нажми на круг и говори',
+  listening: 'Слушаю…',
+  thinking: 'Думаю…',
+  speaking: 'Говорю. Нажми на круг, чтобы перебить',
+  blocked: 'Микрофон на этой странице недоступен. Можно написать текстом внизу, ответ я всё равно произнесу.'
+};
+function vmSet(s, msg) { vm.state = s; $('vstate').textContent = msg || VSTATE[s]; $('vo').dataset.state = s; }
+function vmCancel() {
+  vm.loop++;
+  if (vm.rec) { try { vm.rec.abort(); } catch (e) {} vm.rec = null; }
+  stopSpeaking();
+  if (vm.ctrl) { try { vm.ctrl.abort(); } catch (e) {} vm.ctrl = null; }
+}
+async function vmAsk(text, id) {
+  $('vyou').textContent = text; $('vbot').textContent = '';
+  vm.hist.push({ role: 'user', content: text });
+  vmSet('thinking');
+  const c = new AbortController(); vm.ctrl = c;
+  try {
+    const r = await sample(buildInput(vm.hist.slice(-14), VOICE_INSTR), { modelTier: 'default', cache: false, signal: c.signal });
+    if (c.signal.aborted || id !== vm.loop) { vm.hist.pop(); return; }
+    const reply = cleanForSpeech(r.text) || 'Не знаю, что ответить.';
+    vm.hist.push({ role: 'assistant', content: reply });
+    $('vbot').textContent = reply;
+    vmSet('speaking');
+    const ok = await speakAsync(reply);
+    if (!ok && id === vm.loop) note('Озвучка недоступна, ответ показан текстом.');
+  } catch (e) {
+    if (c.signal.aborted) return;
+    vm.hist.pop(); $('vbot').textContent = errorText(e); vmSet('idle');
+  }
+}
+async function vmLoop() {
+  const id = ++vm.loop;
+  while (vm.on && id === vm.loop) {
+    vmSet('listening'); $('vyou').textContent = '';
+    let text;
+    try { text = await listen(t => { if (id === vm.loop) $('vyou').textContent = t; }, r => { vm.rec = r; }); }
+    catch (e) { if (id === vm.loop) vmSet('blocked'); return; }
+    if (!vm.on || id !== vm.loop) return;
+    if (!text) { if (++vm.silent >= 3) { vm.silent = 0; vmSet('idle'); return; } continue; }
+    vm.silent = 0;
+    await vmAsk(text, id);
+    if (vm.state === 'idle') return;
+  }
+}
+function vmOpen() {
+  if (!sample) return;
+  closePanel(); stopSpeaking();
+  vm.on = true; vm.hist = []; $('vyou').textContent = ''; $('vbot').textContent = '';
+  $('vo').hidden = false; vmLoop();
+}
+function vmClose() { vm.on = false; vmCancel(); $('vo').hidden = true; }
+$('vm').addEventListener('click', vmOpen);
+$('vend').addEventListener('click', vmClose);
+$('orb').addEventListener('click', () => {
+  if (vm.state === 'thinking') return;
+  if (vm.state === 'listening') { if (vm.rec) try { vm.rec.stop(); } catch (e) {} return; }
+  vmCancel(); vm.on = true; vmLoop();
+});
+$('vf').addEventListener('submit', async e => {
+  e.preventDefault();
+  const t = $('vin').value.trim(); if (!t || !sample) return;
+  $('vin').value = '';
+  vmCancel(); vm.on = true;
+  const id = ++vm.loop;
+  await vmAsk(t, id);
+  if (id === vm.loop && vm.state !== 'blocked') vmSet('idle');
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('vo').hidden) vmClose(); else if (!$('panel').hidden) closePanel();
+});
+
+/* ---------- запуск ---------- */
+async function start(email) {
+  sample = sampleShim; downloads = downloadShim; db = localDb; me = { email };
+  try { localStorage.setItem('nn:t', '1'); localStorage.removeItem('nn:t'); uid = 'e_' + encodeURIComponent(email.toLowerCase()).replace(/%/g, '_'); } catch (e) { uid = null; }
+  canSave = !!(db && uid);
+  $('spk').setAttribute('aria-pressed', String(speakOn));
+  notice.textContent = DEFAULT_NOTE;
+  if (!sample) {
+    log.textContent = '';
+    log.appendChild(el('div', 'start')).appendChild(el('p', '', 'Чат работает только внутри Claude. Открой эту страницу в приложении Claude.'));
+    return;
+  }
+  if (canSave) {
+    try {
+      const s = await db.doc(acctPath()).get();
+      const d = s.exists && s.data();
+      profiles = d && Array.isArray(d.list) && d.list.length ? d.list.slice(0, 3).map(p => ({ id: String(p.id), name: String(p.name) })) : [{ id: 'main', name: (me && me.name) || 'Основной' }];
+    } catch (e) { canSave = false; }
+  }
+  if (!canSave) profiles = [{ id: 'guest', name: 'Гость' }];
+  const saved = store.get('nn_active_' + uid);
+  active = profiles.some(p => p.id === saved) ? saved : profiles[0].id;
+  updateHeader();
+  await loadChat();
+  go.disabled = false;
+}
+
+function openKey() { $('keybox').hidden = false; $('kin').focus(); }
+$('kf').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('kin').value.trim();
+  if (v.length < 20) { $('kerr').textContent = 'Ключ слишком короткий. Скопируй его целиком.'; return; }
+  store.set('nn_key', v); $('kin').value = ''; $('kerr').textContent = ''; $('keybox').hidden = true; note('Ключ сохранён. Пиши сообщение.');
+});
+$('kclose').addEventListener('click', () => { $('keybox').hidden = true; });
+$('pkey').addEventListener('click', openKey);
+$('lf').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('lemail').value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { $('lerr').textContent = 'Проверь адрес: он должен выглядеть как имя@gmail.com'; return; }
+  store.set('nn_email', v); $('login').hidden = true; start(v);
+});
+$('logout').addEventListener('click', () => { store.set('nn_email', ''); location.reload(); });
+const savedEmail = store.get('nn_email');
+if (savedEmail) start(savedEmail); else { $('login').hidden = false; $('lemail').focus(); }
+</script>
+</body></html>
